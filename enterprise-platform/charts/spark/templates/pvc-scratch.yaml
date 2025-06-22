@@ -1,0 +1,28 @@
+{{- if .Values.storage.scratch.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "spark.scratchPvcName" . }}
+  labels:
+    {{- include "spark.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- range .Values.storage.scratch.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.scratch.size | quote }}
+  {{- if .Values.storage.scratch.storageClass }}
+  {{- if (eq "-" .Values.storage.scratch.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.storage.scratch.storageClass | quote }}
+  {{- end }}
+  {{- else if .Values.global }}
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

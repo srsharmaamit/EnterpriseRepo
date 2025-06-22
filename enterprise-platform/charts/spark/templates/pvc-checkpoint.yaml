@@ -1,0 +1,28 @@
+{{- if .Values.storage.checkpoint.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "spark.checkpointPvcName" . }}
+  labels:
+    {{- include "spark.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- range .Values.storage.checkpoint.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.checkpoint.size | quote }}
+  {{- if .Values.storage.checkpoint.storageClass }}
+  {{- if (eq "-" .Values.storage.checkpoint.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.storage.checkpoint.storageClass | quote }}
+  {{- end }}
+  {{- else if .Values.global }}
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

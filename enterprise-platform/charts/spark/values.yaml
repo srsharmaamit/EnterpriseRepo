@@ -1,0 +1,212 @@
+# Default values for spark subchart
+# This is a YAML-formatted file.
+
+# Image configuration
+image:
+  repository: my-registry/spark
+  tag: custom
+  pullPolicy: IfNotPresent
+
+# Spark execution mode
+mode: k8s-native
+
+# Spark configuration
+config:
+  # Basic Spark settings
+  spark.kubernetes.container.image: my-registry/spark:custom
+  spark.kubernetes.container.image.pullPolicy: IfNotPresent
+  spark.kubernetes.authenticate.driver.serviceAccountName: ""  # Will be set by template
+  spark.kubernetes.executor.deleteOnTermination: "true"
+  spark.kubernetes.executor.podNamePrefix: spark-exec
+  
+  # Serialization
+  spark.serializer: org.apache.spark.serializer.KryoSerializer
+  spark.kryo.unsafe: "true"
+  spark.kryo.registrator: org.apache.spark.serializer.KryoRegistrator
+  
+  # SQL and Adaptive Query Execution
+  spark.sql.adaptive.enabled: "true"
+  spark.sql.adaptive.coalescePartitions.enabled: "true"
+  spark.sql.adaptive.localShuffleReader.enabled: "true"
+  spark.sql.adaptive.skewJoin.enabled: "true"
+  
+  # Dynamic allocation (disabled for K8s native mode)
+  spark.dynamicAllocation.enabled: "false"
+  spark.dynamicAllocation.shuffleTracking.enabled: "false"
+  
+  # Kubernetes-specific settings
+  spark.kubernetes.driver.pod.name: ""  # Will be set dynamically
+  spark.kubernetes.executor.volumes.persistentVolumeClaim.checkpoint-pvc.options.claimName: ""  # Will be set by template
+  spark.kubernetes.executor.volumes.persistentVolumeClaim.checkpoint-pvc.mount.path: /checkpoint
+  spark.kubernetes.executor.volumes.persistentVolumeClaim.scratch-pvc.options.claimName: ""  # Will be set by template
+  spark.kubernetes.executor.volumes.persistentVolumeClaim.scratch-pvc.mount.path: /scratch
+  
+  # Networking
+  spark.kubernetes.driver.service.name: spark-driver-svc
+  spark.kubernetes.driver.service.type: ClusterIP
+  
+  # Security
+  spark.authenticate: "false"
+  spark.network.crypto.enabled: "false"
+  spark.io.encryption.enabled: "false"
+  
+  # Custom configuration
+  customConfig: |
+    # Additional Spark configuration
+    # Add any custom properties here
+
+# Default resource configuration for Spark jobs
+resources:
+  driver:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  executor:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  instances: 2
+
+# Storage configuration
+storage:
+  checkpoint:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnceMany
+    path: /checkpoint
+  scratch:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnceMany
+    path: /scratch
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# RBAC configuration
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log", "pods/exec"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    - apiGroups: [""]
+      resources: ["services", "configmaps", "secrets"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    - apiGroups: [""]
+      resources: ["persistentvolumeclaims"]
+      verbs: ["get", "list", "watch"]
+
+# Pod template for Spark jobs
+podTemplate:
+  driver:
+    metadata:
+      labels: {}
+      annotations: {}
+    spec:
+      nodeSelector: {}
+      affinity: {}
+      tolerations: []
+      volumes: []
+      volumeMounts: []
+  executor:
+    metadata:
+      labels: {}
+      annotations: {}
+    spec:
+      nodeSelector: {}
+      affinity: {}
+      tolerations: []
+      volumes: []
+      volumeMounts: []
+
+# Security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# Node selector, affinity, and tolerations for infrastructure pods
+nodeSelector: {}
+
+affinity: {}
+
+tolerations: []
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 4040
+  path: /metrics
+  driver:
+    port: 4040
+  executor:
+    port: 4041
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+
+# Extra environment variables
+extraEnvVars: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Test job configuration (for testing Spark functionality)
+testJob:
+  enabled: true
+  name: spark-pi-test
+  mainClass: org.apache.spark.examples.SparkPi
+  mainApplicationFile: local:///opt/spark/examples/jars/spark-examples_2.12-3.3.2.jar
+  arguments: ["10"]
+  driver:
+    cores: 1
+    memory: 1g
+  executor:
+    cores: 1
+    memory: 1g
+    instances: 2
+
+# Monitoring and logging
+monitoring:
+  enabled: true
+  eventLog:
+    enabled: true
+    dir: /checkpoint/eventlogs
+  history:
+    enabled: false
+    service:
+      type: ClusterIP
+      port: 18080
+
+# Network policies
+networkPolicy:
+  enabled: false
+  ingress:
+    from: []

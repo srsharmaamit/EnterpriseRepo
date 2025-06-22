@@ -1,0 +1,22 @@
+apiVersion: v2
+name: spark
+description: Production-ready Apache Spark chart for Kubernetes-native execution
+type: application
+version: 1.0.0
+appVersion: "3.3.2"
+home: https://spark.apache.org/
+sources:
+  - https://github.com/apache/spark
+maintainers:
+  - name: Platform Team
+    email: platform-team@company.com
+keywords:
+  - spark
+  - big-data
+  - analytics
+  - kubernetes
+  - data-processing
+
+annotations:
+  category: DataPlatform
+  licenses: Apache-2.0
