@@ -1,0 +1,76 @@
+# Development environment values
+global:
+  environment: dev
+  imageRegistry: my-registry.company.com
+  imagePullSecrets:
+    - name: private-registry-secret
+  useBYOS: false
+  openshift:
+    enabled: true
+    scc: restricted-v2
+
+# Reduced resources for development
+airflow:
+  enabled: true
+  components:
+    scheduler:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+    webserver:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+  storage:
+    logs:
+      size: 1Gi
+    dags:
+      size: 500Mi
+  ingress:
+    host: airflow-dev.company.com
+
+postgresql:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  persistence:
+    size: 1Gi
+
+spark:
+  enabled: true
+  resources:
+    driver:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    executor:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    instances: 1
+  storage:
+    checkpoint:
+      size: 500Mi
+    scratch:
+      size: 500Mi

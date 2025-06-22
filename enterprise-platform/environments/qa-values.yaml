@@ -1,0 +1,76 @@
+# QA environment values
+global:
+  environment: qa
+  imageRegistry: my-registry.company.com
+  imagePullSecrets:
+    - name: private-registry-secret
+  useBYOS: false
+  openshift:
+    enabled: true
+    scc: restricted-v2
+
+# Moderate resources for QA
+airflow:
+  enabled: true
+  components:
+    scheduler:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: 750m
+          memory: 1.5Gi
+    webserver:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: 750m
+          memory: 1.5Gi
+  storage:
+    logs:
+      size: 2Gi
+    dags:
+      size: 1Gi
+  ingress:
+    host: airflow-qa.company.com
+
+postgresql:
+  enabled: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 750m
+      memory: 1.5Gi
+  persistence:
+    size: 5Gi
+
+spark:
+  enabled: true
+  resources:
+    driver:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    executor:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    instances: 2
+  storage:
+    checkpoint:
+      size: 1Gi
+    scratch:
+      size: 1Gi

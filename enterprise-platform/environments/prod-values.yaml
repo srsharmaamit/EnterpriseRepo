@@ -1,0 +1,96 @@
+# Production environment values
+global:
+  environment: prod
+  imageRegistry: my-registry.company.com
+  imagePullSecrets:
+    - name: private-registry-secret
+  useBYOS: true
+  storageClass: fast-ssd
+  openshift:
+    enabled: true
+    scc: restricted-v2
+
+# Full resources for production
+airflow:
+  enabled: true
+  components:
+    scheduler:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 1000m
+          memory: 2Gi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+    webserver:
+      replicas: 3
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+  storage:
+    logs:
+      size: 10Gi
+    dags:
+      size: 2Gi
+  ingress:
+    host: airflow.company.com
+    tls:
+      enabled: true
+      secretName: airflow-tls-cert
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+postgresql:
+  enabled: true
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  persistence:
+    size: 50Gi
+  config:
+    maxConnections: 500
+    sharedBuffers: 512MB
+    effectiveCacheSize: 2GB
+  metrics:
+    enabled: true
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+spark:
+  enabled: true
+  resources:
+    driver:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+    executor:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    instances: 5
+  storage:
+    checkpoint:
+      size: 10Gi
+    scratch:
+      size: 10Gi
+  metrics:
+    enabled: true
+  testJob:
+    enabled: false  # Disable test job in production
