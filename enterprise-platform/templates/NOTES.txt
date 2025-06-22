@@ -1,0 +1,42 @@
+Enterprise Platform has been installed successfully!
+
+{{- if .Values.airflow.enabled }}
+
+Apache Airflow:
+{{- if .Values.airflow.ingress.enabled }}
+  Web UI: {{ if .Values.airflow.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.airflow.ingress.host }}
+{{- else }}
+  To access the Airflow web UI, run:
+    kubectl port-forward svc/{{ include "enterprise-platform.airflow.fullname" . }}-webserver {{ .Values.airflow.service.port }}:{{ .Values.airflow.service.port }}
+  Then navigate to http://localhost:{{ .Values.airflow.service.port }}
+{{- end }}
+
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+
+PostgreSQL Database:
+  Connection details are stored in secret: {{ include "enterprise-platform.postgresql.fullname" . }}-credentials
+  Host: {{ include "enterprise-platform.postgresql.fullname" . }}
+  Port: {{ .Values.postgresql.service.port }}
+  Database: {{ .Values.postgresql.database.name }}
+
+{{- end }}
+
+{{- if .Values.spark.enabled }}
+
+Apache Spark:
+  Spark jobs can be submitted through Airflow's SparkSubmitOperator
+  Service Account: {{ include "enterprise-platform.spark.serviceAccountName" . }}
+  RBAC is configured for Kubernetes-native Spark execution
+
+{{- end }}
+
+Environment: {{ .Values.global.environment }}
+Namespace: {{ .Release.Namespace }}
+
+For troubleshooting and logs:
+  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+For more information about the platform, visit:
+{{ .Chart.Home }}
