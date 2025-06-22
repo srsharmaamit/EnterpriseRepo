@@ -1,0 +1,28 @@
+{{- if .Values.storage.dags.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "airflow.fullname" . }}-dags
+  labels:
+    {{- include "airflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    {{- range .Values.storage.dags.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.dags.size | quote }}
+  {{- if .Values.storage.dags.storageClass }}
+  {{- if (eq "-" .Values.storage.dags.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.storage.dags.storageClass | quote }}
+  {{- end }}
+  {{- else if .Values.global }}
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

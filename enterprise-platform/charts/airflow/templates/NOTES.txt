@@ -1,0 +1,61 @@
+Apache Airflow has been installed successfully!
+
+{{- if .Values.ingress.enabled }}
+1. Access the Airflow web UI:
+   {{- if .Values.ingress.tls.enabled }}
+   https://{{ .Values.ingress.host }}
+   {{- else }}
+   http://{{ .Values.ingress.host }}
+   {{- end }}
+{{- else }}
+1. Get the application URL by running these commands:
+{{- if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "airflow.fullname" . }}-webserver)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "airflow.fullname" . }}-webserver'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "airflow.fullname" . }}-webserver --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "airflow.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=webserver" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+{{- end }}
+
+2. Default admin user credentials:
+   Username: admin  
+   Password: admin (Change this in production!)
+
+3. Database connection:
+   Host: {{ .Values.database.host }}
+   Port: {{ .Values.database.port }}
+   Database: {{ .Values.database.database }}
+
+4. Executor: {{ .Values.executor }}
+   {{- if eq .Values.executor "KubernetesExecutor" }}
+   Worker Service Account: {{ include "airflow.workerServiceAccountName" . }}
+   {{- end }}
+
+{{- if .Values.storage.logs.enabled }}
+5. Logs are stored in PVC: {{ include "airflow.fullname" . }}-logs
+{{- end }}
+
+{{- if .Values.storage.dags.enabled }}
+6. DAGs are stored in PVC: {{ include "airflow.fullname" . }}-dags
+{{- end }}
+
+{{- if .Values.metrics.enabled }}
+7. Metrics are available at:
+   - Scheduler: port {{ .Values.metrics.port }}
+   - Webserver: port {{ .Values.metrics.port }}
+{{- end }}
+
+For troubleshooting, check the logs:
+  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+For more information about Apache Airflow, visit:
+https://airflow.apache.org/

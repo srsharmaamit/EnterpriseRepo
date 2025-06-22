@@ -1,0 +1,39 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "airflow.fullname" . }}-scheduler
+  labels:
+    {{- $component := "scheduler" }}
+    {{- include "airflow.componentLabels" (dict "Values" .Values "Chart" .Chart "Release" .Release "component" $component) | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "airflow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scheduler
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "airflow.fullname" . }}-webserver
+  labels:
+    {{- $component := "webserver" }}
+    {{- include "airflow.componentLabels" (dict "Values" .Values "Chart" .Chart "Release" .Release "component" $component) | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "airflow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webserver
+{{- end }}
