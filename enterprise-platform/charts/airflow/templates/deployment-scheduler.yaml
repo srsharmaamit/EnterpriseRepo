@@ -1,0 +1,183 @@
+{{- if .Values.components.scheduler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "airflow.fullname" . }}-scheduler
+  labels:
+    {{- $component := "scheduler" }}
+    {{- include "airflow.componentLabels" (dict "Values" .Values "Chart" .Chart "Release" .Release "component" $component) | nindent 4 }}
+  {{- include "airflow.sccAnnotations" . | nindent 2 }}
+spec:
+  replicas: {{ .Values.components.scheduler.replicas }}
+  selector:
+    matchLabels:
+      {{- include "airflow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scheduler
+  template:
+    metadata:
+      labels:
+        {{- include "airflow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: scheduler
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- include "airflow.metricsAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "airflow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "airflow.serviceAccountName" . }}
+      {{- include "airflow.podSecurityContext" . | nindent 6 }}
+      initContainers:
+        {{- range .Values.initContainers }}
+        - name: {{ .name }}
+          image: {{ .image }}
+          command:
+            {{- toYaml .command | nindent 12 }}
+          env:
+            - name: POSTGRES_HOST
+              value: {{ $.Values.database.host | quote }}
+            - name: POSTGRES_PORT
+              value: {{ $.Values.database.port | quote }}
+        {{- end }}
+        - name: airflow-db-init
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command:
+            - bash
+            - -c
+            - |
+              airflow db init
+              airflow db upgrade
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: {{ include "airflow.databaseConnectionString" . }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | default (printf "%s-credentials" (include "airflow.fullname" .)) }}
+                  key: {{ .Values.database.secretKey | default "password" }}
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+            {{- if .Values.storage.logs.enabled }}
+            - name: airflow-logs
+              mountPath: {{ .Values.storage.logs.path }}
+            {{- end }}
+      containers:
+        - name: scheduler
+          {{- include "airflow.securityContext" . | nindent 10 }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - airflow
+            - scheduler
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: {{ include "airflow.databaseConnectionString" . }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | default (printf "%s-credentials" (include "airflow.fullname" .)) }}
+                  key: {{ .Values.database.secretKey | default "password" }}
+            - name: AIRFLOW__KUBERNETES__NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: AIRFLOW__KUBERNETES__WORKER_SERVICE_ACCOUNT_NAME
+              value: {{ include "airflow.workerServiceAccountName" . }}
+            {{- range .Values.extraEnvVars }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          ports:
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          volumeMounts:
+            - name: airflow-config
+              mountPath: /opt/airflow/airflow.cfg
+              subPath: airflow.cfg
+            {{- if .Values.storage.logs.enabled }}
+            - name: airflow-logs
+              mountPath: {{ .Values.storage.logs.path }}
+            {{- end }}
+            {{- if .Values.storage.dags.enabled }}
+            - name: airflow-dags
+              mountPath: {{ .Values.storage.dags.path }}
+            {{- end }}
+            {{- range .Values.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- if .subPath }}
+              subPath: {{ .subPath }}
+              {{- end }}
+            {{- end }}
+          {{- if .Values.components.scheduler.livenessProbe.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  airflow jobs check --job-type SchedulerJob --hostname $(hostname)
+            initialDelaySeconds: {{ .Values.components.scheduler.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.components.scheduler.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.components.scheduler.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.components.scheduler.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.components.scheduler.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  airflow jobs check --job-type SchedulerJob --hostname $(hostname)
+            initialDelaySeconds: {{ .Values.components.scheduler.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.components.scheduler.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.components.scheduler.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.components.scheduler.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.components.scheduler.resources | nindent 12 }}
+        {{- range .Values.sidecars }}
+        - name: {{ .name }}
+          image: {{ .image }}
+          {{- if .command }}
+          command:
+            {{- toYaml .command | nindent 12 }}
+          {{- end }}
+          {{- if .volumeMounts }}
+          volumeMounts:
+            {{- toYaml .volumeMounts | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      volumes:
+        - name: airflow-config
+          configMap:
+            name: {{ include "airflow.fullname" . }}-config
+        {{- if .Values.storage.logs.enabled }}
+        - name: airflow-logs
+          persistentVolumeClaim:
+            claimName: {{ include "airflow.fullname" . }}-logs
+        {{- end }}
+        {{- if .Values.storage.dags.enabled }}
+        - name: airflow-dags
+          persistentVolumeClaim:
+            claimName: {{ include "airflow.fullname" . }}-dags
+        {{- end }}
+        {{- range .Values.extraVolumes }}
+        - name: {{ .name }}
+          {{- toYaml .volume | nindent 10 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

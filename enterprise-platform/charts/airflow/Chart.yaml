@@ -1,0 +1,22 @@
+apiVersion: v2
+name: airflow
+description: Production-ready Apache Airflow chart with KubernetesExecutor
+type: application
+version: 1.0.0
+appVersion: "2.5.0"
+home: https://airflow.apache.org/
+sources:
+  - https://github.com/apache/airflow
+maintainers:
+  - name: Platform Team
+    email: platform-team@company.com
+keywords:
+  - airflow
+  - workflow
+  - scheduler
+  - kubernetes
+  - data-pipeline
+
+annotations:
+  category: DataPlatform
+  licenses: Apache-2.0

@@ -1,0 +1,215 @@
+# Default values for airflow subchart
+# This is a YAML-formatted file.
+
+# Image configuration
+image:
+  repository: my-registry/airflow
+  tag: custom
+  pullPolicy: IfNotPresent
+
+# Executor configuration
+executor: KubernetesExecutor
+
+# Database configuration (will be overridden by parent chart)
+database:
+  host: postgresql
+  port: 5432
+  database: airflow
+  username: airflow
+  existingSecret: ""
+  secretKey: password
+
+# Airflow configuration
+config:
+  core:
+    dags_folder: /opt/airflow/dags
+    executor: KubernetesExecutor
+    load_examples: "False"
+    parallelism: 32
+    dag_concurrency: 16
+    max_active_runs_per_dag: 16
+    max_active_tasks_per_dag: 16
+  webserver:
+    enable_proxy_fix: "True"
+    web_server_port: 8080
+    workers: 4
+    worker_timeout: 120
+    worker_refresh_interval: 30
+  scheduler:
+    dag_dir_list_interval: 300
+    schedule_after_task_execution: "True"
+    catchup_by_default: "False"
+    max_threads: 2
+  kubernetes:
+    namespace: default
+    worker_container_repository: my-registry/airflow
+    worker_container_tag: custom
+    worker_service_account_name: airflow-worker
+    delete_worker_pods: "True"
+    delete_worker_pods_on_failure: "False"
+    dags_in_image: "True"
+    git_repo: ""
+    git_branch: ""
+
+# Component configuration
+components:
+  scheduler:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  webserver:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    route.openshift.io/termination: edge
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  host: airflow.company.com
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: ""
+
+# Storage configuration
+storage:
+  logs:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnceMany
+    path: /opt/airflow/logs
+  dags:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnceMany
+    path: /opt/airflow/dags
+
+# Init containers
+initContainers:
+  - name: wait-for-db
+    image: busybox:1.35
+    command:
+      - sh
+      - -c
+      - |
+        until nc -z {{ .Values.database.host }} {{ .Values.database.port }}; do
+          echo "Waiting for database..."
+          sleep 2
+        done
+        echo "Database is ready!"
+
+# Security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# RBAC (for KubernetesExecutor)
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log", "pods/exec"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    - apiGroups: [""]
+      resources: ["configmaps", "secrets"]
+      verbs: ["get", "list", "watch"]
+
+# Node selector, affinity, and tolerations
+nodeSelector: {}
+
+affinity: {}
+
+tolerations: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8125
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+
+# Extra environment variables
+extraEnvVars: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Sidecars
+sidecars: []
