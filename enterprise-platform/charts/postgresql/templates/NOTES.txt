@@ -1,0 +1,33 @@
+PostgreSQL has been installed successfully!
+
+1. Database connection information:
+   Host: {{ include "postgresql.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+   Port: {{ .Values.service.port }}
+   Database: {{ .Values.database.name }}
+   Username: {{ .Values.database.username }}
+
+2. To get the database password:
+   kubectl get secret {{ include "postgresql.secretName" . }} -o jsonpath="{.data.{{ .Values.database.secretKey | default "password" }}}" | base64 --decode
+
+3. To connect to your database from within the cluster:
+   kubectl run postgresql-client --rm --tty -i --restart='Never' --image postgres:13 --env="PGPASSWORD=$(kubectl get secret {{ include "postgresql.secretName" . }} -o jsonpath="{.data.{{ .Values.database.secretKey | default "password" }}}" | base64 --decode)" --command -- psql --host {{ include "postgresql.fullname" . }} -U {{ .Values.database.username }} -d {{ .Values.database.name }} -p {{ .Values.service.port }}
+
+4. To connect to your database from outside the cluster:
+   kubectl port-forward svc/{{ include "postgresql.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+   PGPASSWORD="$(kubectl get secret {{ include "postgresql.secretName" . }} -o jsonpath="{.data.{{ .Values.database.secretKey | default "password" }}}" | base64 --decode)" psql --host 127.0.0.1 -U {{ .Values.database.username }} -d {{ .Values.database.name }} -p {{ .Values.service.port }}
+
+{{- if .Values.persistence.enabled }}
+5. Data is persisted in PVC: {{ include "postgresql.fullname" . }}-postgresql-data-0
+{{- end }}
+
+{{- if .Values.metrics.enabled }}
+6. Metrics are available at:
+   Port: {{ .Values.metrics.port }}
+   Path: /metrics
+{{- end }}
+
+For troubleshooting, check the logs:
+  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name=postgresql -n {{ .Release.Namespace }}
+
+For more information about PostgreSQL, visit:
+https://www.postgresql.org/
