@@ -1,0 +1,83 @@
+Apache Spark has been installed successfully!
+
+1. Spark Configuration:
+   Mode: {{ .Values.mode }}
+   Service Account: {{ include "spark.serviceAccountName" . }}
+   
+2. Storage:
+   {{- if .Values.storage.checkpoint.enabled }}
+   Checkpoint PVC: {{ include "spark.checkpointPvcName" . }}
+   {{- end }}
+   {{- if .Values.storage.scratch.enabled }}
+   Scratch PVC: {{ include "spark.scratchPvcName" . }}
+   {{- end }}
+
+3. Pod Templates:
+   Driver template: {{ include "spark.fullname" . }}-driver-pod-template
+   Executor template: {{ include "spark.fullname" . }}-executor-pod-template
+
+4. Configuration:
+   Spark defaults: {{ include "spark.fullname" . }}-config
+
+5. To submit a Spark job using spark-submit:
+   kubectl run spark-client --rm --tty -i --restart='Never' \
+     --image={{ .Values.image.repository }}:{{ .Values.image.tag }} \
+     --serviceaccount={{ include "spark.serviceAccountName" . }} \
+     --command -- \
+     /opt/spark/bin/spark-submit \
+     --master k8s://https://kubernetes.default.svc:443 \
+     --deploy-mode cluster \
+     --name my-spark-job \
+     --class org.apache.spark.examples.SparkPi \
+     --conf spark.kubernetes.container.image={{ .Values.image.repository }}:{{ .Values.image.tag }} \
+     --conf spark.kubernetes.authenticate.driver.serviceAccountName={{ include "spark.serviceAccountName" . }} \
+     --conf spark.kubernetes.executor.deleteOnTermination=true \
+     --conf spark.driver.cores={{ .Values.resources.driver.requests.cpu }} \
+     --conf spark.driver.memory={{ .Values.resources.driver.requests.memory }} \
+     --conf spark.executor.cores={{ .Values.resources.executor.requests.cpu }} \
+     --conf spark.executor.memory={{ .Values.resources.executor.requests.memory }} \
+     --conf spark.executor.instances={{ .Values.resources.instances }} \
+     local:///opt/spark/examples/jars/spark-examples_2.12-3.3.2.jar 10
+
+6. To submit from Airflow using SparkSubmitOperator:
+   spark_submit_task = SparkSubmitOperator(
+       task_id='spark_job',
+       application='/opt/spark/examples/jars/spark-examples_2.12-3.3.2.jar',
+       name='airflow-spark-job',
+       conn_id='spark_k8s',
+       conf={
+           'spark.kubernetes.container.image': '{{ .Values.image.repository }}:{{ .Values.image.tag }}',
+           'spark.kubernetes.authenticate.driver.serviceAccountName': '{{ include "spark.serviceAccountName" . }}',
+           'spark.kubernetes.executor.deleteOnTermination': 'true',
+           'spark.driver.cores': '{{ .Values.resources.driver.requests.cpu }}',
+           'spark.driver.memory': '{{ .Values.resources.driver.requests.memory }}',
+           'spark.executor.cores': '{{ .Values.resources.executor.requests.cpu }}',
+           'spark.executor.memory': '{{ .Values.resources.executor.requests.memory }}',
+           'spark.executor.instances': '{{ .Values.resources.instances }}'
+       },
+       dag=dag
+   )
+
+{{- if .Values.testJob.enabled }}
+7. Test job has been created: {{ include "spark.fullname" . }}-pi-test
+   Run with: helm test {{ .Release.Name }}
+{{- end }}
+
+{{- if .Values.metrics.enabled }}
+8. Metrics are available at:
+   Driver: port {{ .Values.metrics.driver.port }}
+   Executor: port {{ .Values.metrics.executor.port }}
+{{- end }}
+
+For troubleshooting, check the logs:
+  # List Spark pods
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name=spark -n {{ .Release.Namespace }}
+  
+  # Check driver logs
+  kubectl logs <spark-driver-pod> -n {{ .Release.Namespace }}
+  
+  # Check executor logs
+  kubectl logs <spark-executor-pod> -n {{ .Release.Namespace }}
+
+For more information about Apache Spark on Kubernetes, visit:
+https://spark.apache.org/docs/latest/running-on-kubernetes.html
