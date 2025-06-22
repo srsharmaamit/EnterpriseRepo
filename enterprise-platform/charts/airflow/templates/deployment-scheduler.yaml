@@ -71,7 +71,7 @@ spec:
             - scheduler
           env:
             - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-              value: {{ include "airflow.databaseConnectionString" . }}
+              value: {{ include "airflow.databaseConnectionString" . | quote }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
