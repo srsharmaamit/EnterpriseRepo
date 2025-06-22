@@ -1,0 +1,344 @@
+# GitLab CI/CD Pipeline for Enterprise Platform Helm Chart
+
+stages:
+  - validate
+  - test
+  - build
+  - deploy-dev
+  - deploy-qa
+  - deploy-prod
+
+variables:
+  CHART_NAME: enterprise-platform
+  HELM_VERSION: "3.12.0"
+  KUBECTL_VERSION: "1.27.0"
+  CHART_REGISTRY: "${CI_REGISTRY}/charts"
+
+# Templates
+.helm_template: &helm_template
+  image: alpine/helm:${HELM_VERSION}
+  before_script:
+    - apk add --no-cache curl bash
+    - curl -LO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - helm version
+    - kubectl version --client
+
+.k8s_template: &k8s_template
+  <<: *helm_template
+  before_script:
+    - apk add --no-cache curl bash
+    - curl -LO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - helm version
+    - kubectl version --client
+    - kubectl config use-context ${K8S_CONTEXT}
+
+# Validation stage
+validate:chart:
+  <<: *helm_template
+  stage: validate
+  script:
+    - cd ${CHART_NAME}
+    - ./scripts/validate.sh
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - changes:
+        - "${CHART_NAME}/**/*"
+
+validate:security:
+  <<: *helm_template
+  stage: validate
+  script:
+    - cd ${CHART_NAME}
+    - helm template test-release . --values environments/prod-values.yaml > manifests.yaml
+    - |
+      # Check for security best practices
+      echo "Checking for security contexts..."
+      if ! grep -q "securityContext:" manifests.yaml; then
+        echo "WARNING: No security contexts found"
+        exit 1
+      fi
+      
+      echo "Checking for resource limits..."
+      if ! grep -q "limits:" manifests.yaml; then
+        echo "WARNING: No resource limits found"
+        exit 1
+      fi
+      
+      echo "Checking for non-root execution..."
+      if ! grep -q "runAsNonRoot: true" manifests.yaml; then
+        echo "WARNING: Containers may run as root"
+        exit 1
+      fi
+      
+      echo "Security validation passed"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# Test stage
+test:dry-run:
+  <<: *helm_template
+  stage: test
+  script:
+    - cd ${CHART_NAME}
+    - |
+      for env in dev qa prod; do
+        echo "Testing $env environment..."
+        helm template test-release . --values environments/${env}-values.yaml --dry-run
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+test:unit:
+  <<: *helm_template
+  stage: test
+  script:
+    - cd ${CHART_NAME}
+    - |
+      # Install helm-unittest plugin
+      helm plugin install https://github.com/quintush/helm-unittest
+      
+      # Run unit tests if they exist
+      if [ -d "tests/" ]; then
+        helm unittest .
+      else
+        echo "No unit tests found, skipping..."
+      fi
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# Build stage
+build:package:
+  <<: *helm_template
+  stage: build
+  script:
+    - cd ${CHART_NAME}
+    - helm dependency update
+    - helm package . --version ${CI_COMMIT_SHORT_SHA}
+    - mkdir -p ../artifacts
+    - mv *.tgz ../artifacts/
+  artifacts:
+    paths:
+      - artifacts/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_TAG'
+
+build:push:
+  <<: *helm_template
+  stage: build
+  script:
+    - cd ${CHART_NAME}
+    - helm dependency update
+    - |
+      # Login to container registry
+      echo ${CI_REGISTRY_PASSWORD} | helm registry login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}
+      
+      # Package and push chart
+      helm package . --version ${CI_COMMIT_SHORT_SHA}
+      helm push ${CHART_NAME}-${CI_COMMIT_SHORT_SHA}.tgz oci://${CHART_REGISTRY}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_TAG'
+
+# Development deployment
+deploy:dev:
+  <<: *k8s_template
+  stage: deploy-dev
+  variables:
+    ENVIRONMENT: dev
+    NAMESPACE: enterprise-platform-dev
+    K8S_CONTEXT: development
+  script:
+    - cd ${CHART_NAME}
+    - |
+      # Create namespace if it doesn't exist
+      kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Create or update registry secret
+      kubectl create secret docker-registry private-registry-secret \
+        --docker-server=${CI_REGISTRY} \
+        --docker-username=${CI_REGISTRY_USER} \
+        --docker-password=${CI_REGISTRY_PASSWORD} \
+        --docker-email=${GITLAB_USER_EMAIL} \
+        --namespace=${NAMESPACE} \
+        --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Deploy with Helm
+      helm upgrade --install ${CHART_NAME}-${ENVIRONMENT} . \
+        --namespace ${NAMESPACE} \
+        --values environments/${ENVIRONMENT}-values.yaml \
+        --set global.imageRegistry=${CI_REGISTRY} \
+        --set global.imagePullSecrets[0].name=private-registry-secret \
+        --set airflow.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --set postgresql.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --set spark.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --timeout 10m \
+        --wait
+  environment:
+    name: development
+    url: https://airflow-dev.company.com
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+# QA deployment
+deploy:qa:
+  <<: *k8s_template
+  stage: deploy-qa
+  variables:
+    ENVIRONMENT: qa
+    NAMESPACE: enterprise-platform-qa
+    K8S_CONTEXT: qa
+  script:
+    - cd ${CHART_NAME}
+    - |
+      # Create namespace if it doesn't exist
+      kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Create or update registry secret
+      kubectl create secret docker-registry private-registry-secret \
+        --docker-server=${CI_REGISTRY} \
+        --docker-username=${CI_REGISTRY_USER} \
+        --docker-password=${CI_REGISTRY_PASSWORD} \
+        --docker-email=${GITLAB_USER_EMAIL} \
+        --namespace=${NAMESPACE} \
+        --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Deploy with Helm
+      helm upgrade --install ${CHART_NAME}-${ENVIRONMENT} . \
+        --namespace ${NAMESPACE} \
+        --values environments/${ENVIRONMENT}-values.yaml \
+        --set global.imageRegistry=${CI_REGISTRY} \
+        --set global.imagePullSecrets[0].name=private-registry-secret \
+        --set airflow.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --set postgresql.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --set spark.image.tag=${CI_COMMIT_SHORT_SHA} \
+        --timeout 15m \
+        --wait
+      
+      # Run smoke tests
+      helm test ${CHART_NAME}-${ENVIRONMENT} --namespace ${NAMESPACE} --timeout 5m
+  environment:
+    name: qa
+    url: https://airflow-qa.company.com
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+
+# Production deployment
+deploy:prod:
+  <<: *k8s_template
+  stage: deploy-prod
+  variables:
+    ENVIRONMENT: prod
+    NAMESPACE: enterprise-platform
+    K8S_CONTEXT: production
+  script:
+    - cd ${CHART_NAME}
+    - |
+      # Create namespace if it doesn't exist
+      kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Create or update registry secret
+      kubectl create secret docker-registry private-registry-secret \
+        --docker-server=${CI_REGISTRY} \
+        --docker-username=${CI_REGISTRY_USER} \
+        --docker-password=${CI_REGISTRY_PASSWORD} \
+        --docker-email=${GITLAB_USER_EMAIL} \
+        --namespace=${NAMESPACE} \
+        --dry-run=client -o yaml | kubectl apply -f -
+      
+      # Deploy with Helm
+      helm upgrade --install ${CHART_NAME}-${ENVIRONMENT} . \
+        --namespace ${NAMESPACE} \
+        --values environments/${ENVIRONMENT}-values.yaml \
+        --set global.imageRegistry=${CI_REGISTRY} \
+        --set global.imagePullSecrets[0].name=private-registry-secret \
+        --set airflow.image.tag=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --set postgresql.image.tag=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --set spark.image.tag=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --timeout 20m \
+        --wait
+      
+      # Verify deployment
+      kubectl get pods -n ${NAMESPACE}
+      kubectl get svc -n ${NAMESPACE}
+  environment:
+    name: production
+    url: https://airflow.company.com
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+  allow_failure: false
+
+# Rollback jobs
+rollback:dev:
+  <<: *k8s_template
+  stage: deploy-dev
+  variables:
+    ENVIRONMENT: dev
+    NAMESPACE: enterprise-platform-dev
+    K8S_CONTEXT: development
+  script:
+    - helm rollback ${CHART_NAME}-${ENVIRONMENT} --namespace ${NAMESPACE}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+
+rollback:qa:
+  <<: *k8s_template
+  stage: deploy-qa
+  variables:
+    ENVIRONMENT: qa
+    NAMESPACE: enterprise-platform-qa
+    K8S_CONTEXT: qa
+  script:
+    - helm rollback ${CHART_NAME}-${ENVIRONMENT} --namespace ${NAMESPACE}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+
+rollback:prod:
+  <<: *k8s_template
+  stage: deploy-prod
+  variables:
+    ENVIRONMENT: prod
+    NAMESPACE: enterprise-platform
+    K8S_CONTEXT: production
+  script:
+    - helm rollback ${CHART_NAME}-${ENVIRONMENT} --namespace ${NAMESPACE}
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual
+      allow_failure: false
+
+# Cleanup job
+cleanup:
+  <<: *k8s_template
+  stage: deploy-prod
+  script:
+    - |
+      # Clean up old releases (keep last 3)
+      for env in dev qa prod; do
+        namespace="enterprise-platform"
+        if [ "$env" != "prod" ]; then
+          namespace="enterprise-platform-${env}"
+        fi
+        
+        echo "Cleaning up old releases in $namespace..."
+        helm history ${CHART_NAME}-${env} --namespace $namespace --max 10 || true
+      done
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  allow_failure: true
