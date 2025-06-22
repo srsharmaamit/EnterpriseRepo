@@ -1,0 +1,22 @@
+apiVersion: v2
+name: postgresql
+description: Production-ready PostgreSQL chart for enterprise data platform
+type: application
+version: 1.0.0
+appVersion: "13.10"
+home: https://www.postgresql.org/
+sources:
+  - https://github.com/postgres/postgres
+maintainers:
+  - name: Platform Team
+    email: platform-team@company.com
+keywords:
+  - postgresql
+  - database
+  - metadata
+  - airflow
+  - kubernetes
+
+annotations:
+  category: Database
+  licenses: PostgreSQL

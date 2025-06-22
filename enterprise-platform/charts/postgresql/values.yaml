@@ -1,0 +1,193 @@
+# Default values for postgresql subchart
+# This is a YAML-formatted file.
+
+# Image configuration
+image:
+  repository: my-registry/postgres
+  tag: custom
+  pullPolicy: IfNotPresent
+
+# Database configuration
+database:
+  name: airflow
+  username: airflow
+  password: ""  # Will be auto-generated if empty
+  existingSecret: ""
+  secretKey: password
+  
+# PostgreSQL configuration
+config:
+  # Connection settings
+  maxConnections: 200
+  listenAddresses: "*"
+  port: 5432
+  
+  # Memory settings
+  sharedBuffers: 256MB
+  effectiveCacheSize: 1GB
+  workMem: 4MB
+  maintenanceWorkMem: 64MB
+  
+  # WAL settings
+  walBuffers: 16MB
+  checkpointCompletionTarget: 0.9
+  maxWalSize: 1GB
+  minWalSize: 80MB
+  
+  # Query planner settings
+  randomPageCost: 1.1
+  effectiveIoConcurrency: 200
+  
+  # Logging settings
+  logDestination: stderr
+  loggingCollector: "on"
+  logDirectory: "/var/log/postgresql"
+  logFilename: "postgresql-%Y-%m-%d_%H%M%S.log"
+  logTruncateOnRotation: "on"
+  logRotationAge: "1d"
+  logRotationSize: "10MB"
+  logMinDurationStatement: 1000
+  logLinePrefix: "%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h "
+  logLockWaits: "on"
+  logStatement: "ddl"
+  logTempFiles: 0
+  
+  # Additional custom configurations
+  customConfig: |
+    # Custom PostgreSQL configuration
+    # Add any additional parameters here
+
+# Persistence configuration
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+  mountPath: /var/lib/postgresql/data
+  subPath: ""
+
+# Resource configuration
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5432
+  targetPort: 5432
+  annotations: {}
+
+# Security context
+securityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+  runAsNonRoot: true
+
+podSecurityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+  runAsNonRoot: true
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Liveness and readiness probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 10
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# Startup probe (for slow starting containers)
+startupProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 30
+
+# Init containers
+initContainers:
+  - name: fix-permissions
+    image: busybox:1.35
+    command:
+      - sh
+      - -c
+      - |
+        chown -R 999:999 /var/lib/postgresql/data
+        chmod 700 /var/lib/postgresql/data
+    volumeMounts:
+      - name: postgresql-data
+        mountPath: /var/lib/postgresql/data
+
+# Node selector, affinity, and tolerations
+nodeSelector: {}
+
+affinity: {}
+
+tolerations: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Metrics configuration
+metrics:
+  enabled: true
+  image:
+    repository: quay.io/prometheuscommunity/postgres-exporter
+    tag: v0.12.0
+    pullPolicy: IfNotPresent
+  port: 9187
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+
+# Extra environment variables
+extraEnvVars: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Sidecars
+sidecars: []
+
+# Network policies
+networkPolicy:
+  enabled: false
+  ingress:
+    from: []
